@@ -2,6 +2,7 @@
 DataLoaders to take parquet directories and create feature vectors suitable
 for use by models found in this project.
 """
+from doctest import ELLIPSIS_MARKER
 import random
 from collections import defaultdict
 from pathlib import Path
@@ -319,7 +320,7 @@ class PointCloudDataset(torch.utils.data.Dataset):
 class PygPointCloudDataset(PointCloudDataset):
     """Class for feeding structure parquets into network."""
 
-    def __getitem__(self, item):
+    def __getitem__(self, item, dE_mode=False):
         """Given an index, locate and preprocess relevant parquet file.
 
         Arguments:
@@ -333,7 +334,8 @@ class PygPointCloudDataset(PointCloudDataset):
             denoting whether the structure is an active or a decoy.
         """
         lig_fname, rec_fname, label = self.index_to_parquets(item)
-        dE, rmsd = self.dEs[item], self.rmsds[item]
+        if dE_mode:
+            dE, rmsd = self.dEs[item], self.rmsds[item]
 
         p, v, struct, force_zero_label = self.parquets_to_inputs(
             lig_fname, rec_fname, item=item)
@@ -357,18 +359,29 @@ class PygPointCloudDataset(PointCloudDataset):
 
         y = torch.from_numpy(np.array(label))
         y = y.long() if self.model_task == 'classification' else y.float()
+        if dE_mode:
+            return Data(
+                x=v,
+                edge_index=edge_indices,
+                edge_attr=edge_attrs,
+                pos=p,
+                y=y,
+                rec_fname=rec_fname,
+                lig_fname=lig_fname,
+                dE=dE,
+                rmsd=rmsd
+            )
+        else:
+            return Data(
+                x=v,
+                edge_index=edge_indices,
+                edge_attr=edge_attrs,
+                pos=p,
+                y=y,
+                rec_fname=rec_fname,
+                lig_fname=lig_fname,
+            )
 
-        return Data(
-            x=v,
-            edge_index=edge_indices,
-            edge_attr=edge_attrs,
-            pos=p,
-            y=y,
-            rec_fname=rec_fname,
-            lig_fname=lig_fname,
-            dE=dE,
-            rmsd=rmsd
-        )
 
 
 class SynthPharmDataset(PygPointCloudDataset):
