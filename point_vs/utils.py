@@ -26,6 +26,15 @@ from scipy.stats import pearsonr
 
 from point_vs.constants import AA_TRIPLET_CODES
 
+def find_latest_checkpoint(root):
+    max_epoch = -1
+    for fname in expand_path(root, 'checkpoints').glob('*.pt'):
+        max_epoch = max(
+            max_epoch, int(fname.with_suffix('').name.split('_')[-1]))
+    if max_epoch > -1:
+        return Path(root, 'checkpoints', 'ckpt_epoch_{}.pt'.format(max_epoch))
+    raise RuntimeError('Could not find saved model in', root)
+
 
 def split_sdfs(sdf, output_dir):
     cmd.reinitialize()
