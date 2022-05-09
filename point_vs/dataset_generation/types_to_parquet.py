@@ -849,8 +849,11 @@ def parse_types_file(types_file):
 def parse_single_types_entry(inp, outp, structure_type, extended=False,
                              mol2=False):
 
-    def get_sdf_and_index(lig):
-        sdf = '_'.join(str(lig).split('_')[:-1]) + extension
+    def get_sdf_and_index(lig, underscore_use=False):
+        if underscore_use:
+            sdf = '_'.join(str(lig).split('_')[:-1]) + extension
+        else:
+            sdf = lig + extension
         try:
             idx = int(str(lig).split('_')[-1].split('.')[0])
         except ValueError:
