@@ -853,7 +853,7 @@ def parse_single_types_entry(inp, outp, structure_type, extended=False,
         if underscore_use:
             sdf = '_'.join(str(lig).split('_')[:-1]) + extension
         else:
-            sdf = lig + extension
+            sdf = str(lig) + extension
         try:
             idx = int(str(lig).split('_')[-1].split('.')[0])
         except ValueError:
