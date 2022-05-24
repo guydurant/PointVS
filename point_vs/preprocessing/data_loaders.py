@@ -13,7 +13,8 @@ import psutil
 import torch
 from torch.nn.functional import one_hot
 from torch.utils.data import DataLoader
-from torch_geometric.data import DataLoader as GeoDataLoader, Data
+from torch_geometric.loader import DataLoader as GeoDataLoader
+from torch_geometric.data import Data
 
 from point_vs.preprocessing.preprocessing import make_box, \
     concat_structs, make_bit_vector, uniform_random_rotation, generate_edges
@@ -69,6 +70,7 @@ class PointCloudDataset(torch.utils.data.Dataset):
                 min_inactive_rms_distance is None))
         assert not (include_strain_info and augmented_active_count)
         super().__init__()
+        self.include_strain_info = include_strain_info
         self.radius = radius
         self.estimate_bonds = estimate_bonds
         self.base_path = Path(base_path).expanduser()
@@ -112,14 +114,16 @@ class PointCloudDataset(torch.utils.data.Dataset):
             self.ligand_fnames = regression_types_to_lists(
                 self.base_path, types_fname)
         else:
-            _labels, rmsds, receptor_fnames, ligand_fnames, dEs, strain_rmsds = \
+            _labels, rmsds, receptor_fnames, ligand_fnames, dEs, strain_rmsds\
+                = \
                 classifiaction_types_to_lists(
                     types_fname, include_strain_info=include_strain_info)
 
             # Do we use provided labels or do we generate our own using
             # rmsds?
             labels = [] if label_by_rmsd else _labels
-            for path_idx, (receptor_fname, ligand_fname, dE, strain_rmsd) in enumerate(
+            for path_idx, (
+            receptor_fname, ligand_fname, dE, strain_rmsd) in enumerate(
                     zip(receptor_fnames, ligand_fnames, dEs, strain_rmsds)):
                 if label_by_rmsd:
                     # Pose selection, filter by max/min active/inactive rmsd
@@ -320,7 +324,7 @@ class PointCloudDataset(torch.utils.data.Dataset):
 class PygPointCloudDataset(PointCloudDataset):
     """Class for feeding structure parquets into network."""
 
-    def __getitem__(self, item, dE_mode=False):
+    def __getitem__(self, item):
         """Given an index, locate and preprocess relevant parquet file.
 
         Arguments:
@@ -334,9 +338,10 @@ class PygPointCloudDataset(PointCloudDataset):
             denoting whether the structure is an active or a decoy.
         """
         lig_fname, rec_fname, label = self.index_to_parquets(item)
-        if dE_mode:
+        if self.include_strain_info:
             dE, rmsd = self.dEs[item], self.rmsds[item]
-
+        else:
+            dE, rmsd = None, None
         p, v, struct, force_zero_label = self.parquets_to_inputs(
             lig_fname, rec_fname, item=item)
         if force_zero_label:
@@ -359,28 +364,17 @@ class PygPointCloudDataset(PointCloudDataset):
 
         y = torch.from_numpy(np.array(label))
         y = y.long() if self.model_task == 'classification' else y.float()
-        if dE_mode:
-            return Data(
-                x=v,
-                edge_index=edge_indices,
-                edge_attr=edge_attrs,
-                pos=p,
-                y=y,
-                rec_fname=rec_fname,
-                lig_fname=lig_fname,
-                dE=dE,
-                rmsd=rmsd
-            )
-        else:
-            return Data(
-                x=v,
-                edge_index=edge_indices,
-                edge_attr=edge_attrs,
-                pos=p,
-                y=y,
-                rec_fname=rec_fname,
-                lig_fname=lig_fname,
-            )
+        return Data(
+            x=v,
+            edge_index=edge_indices,
+            edge_attr=edge_attrs,
+            pos=p,
+            y=y,
+            rec_fname=rec_fname,
+            lig_fname=lig_fname,
+            dE=dE,
+            rmsd=rmsd
+        )
 
 
 

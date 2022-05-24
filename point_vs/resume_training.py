@@ -5,10 +5,10 @@ from pathlib import Path
 
 import wandb
 
-from point_vs.models.load_model import load_model, find_latest_checkpoint
+from point_vs.models.load_model import load_model
 from point_vs.preprocessing.data_loaders import PygPointCloudDataset, \
     PointCloudDataset, get_data_loader
-from point_vs.utils import expand_path
+from point_vs.utils import expand_path, find_latest_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -54,7 +54,8 @@ if __name__ == '__main__':
         p_remove_entity=cmd_line_args.get('p_remove_entity', 0),
         extended_atom_types=cmd_line_args.get('extended_atom_types', False),
         p_noise=cmd_line_args.get('p_noise', -1),
-        include_strain_info=cmd_line_args.get('include_strain_info', False)
+        include_strain_info=cmd_line_args.get('include_strain_info', False),
+        model_task=cmd_line_args.get('model_task', 'classification')
     )
 
     if cmd_line_args['test_data_root'] is not None:
@@ -72,7 +73,8 @@ if __name__ == '__main__':
             prune=cmd_line_args.get('prune', False),
             rot=False, mode='val', fname_suffix=cmd_line_args['input_suffix'],
             extended_atom_types=cmd_line_args.get('extended_atom_types', False),
-            include_strain_info=cmd_line_args.get('include_strain_info', False))
+            include_strain_info=cmd_line_args.get('include_strain_info', False),
+            model_task=cmd_line_args.get('model_task', 'classification'))
     else:
         test_dl = None
 
@@ -99,9 +101,7 @@ if __name__ == '__main__':
     if epochs:
         model.train_model(
             train_dl, epochs=epochs, top1_on_end=cmd_line_args['top1'],
-            epoch_end_validation_set=test_dl,
-            only_save_best_models=cmd_line_args.get(
-                'only_save_best_models', False))
+            epoch_end_validation_set=test_dl)
 
     model = model.eval()
     if test_dl is not None:

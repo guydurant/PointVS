@@ -711,6 +711,7 @@ class StructuralFileParser:
     def get_coords_and_types_info(
             self, mol, all_ligand_coords=None, add_polar_hydrogens=True):
         xs, ys, zs, atomic_nums, types, bp = [], [], [], [], [], []
+        resis = []
         n_features = len(set(self.type_map.values())) + 1
         for atom in mol:
             if (self.mol_type == 'receptor' and
@@ -735,19 +736,26 @@ class StructuralFileParser:
             if isinstance(all_ligand_coords, PositionSet):
                 if coords_to_string(atom.coords) in all_ligand_coords:
                     bp.append(0)
+                    resi = -1
                 else:
                     type_int += n_features
                     bp.append(1)
+                    resi = atom.OBAtom.GetResidue().GetIdx()
+                resis.append(resi)
+
             x, y, z = atom.coords
             xs.append(x)
             ys.append(y)
             zs.append(z)
             types.append(type_int)
             atomic_nums.append(atomic_num)
-        return xs, ys, zs, types, atomic_nums, bp
+
+        if not isinstance(all_ligand_coords, PositionSet):
+            resis = None
+        return xs, ys, zs, types, atomic_nums, bp, resis
 
     def obmol_to_parquet(self, mol, add_polar_hydrogens):
-        xs, ys, zs, types, atomic_nums, _ = self.get_coords_and_types_info(
+        xs, ys, zs, types, atomic_nums, _, _ = self.get_coords_and_types_info(
             mol, add_polar_hydrogens=add_polar_hydrogens)
         df = pd.DataFrame()
         df['x'], df['y'], df['z'] = xs, ys, zs
@@ -834,6 +842,7 @@ def parse_types_file(types_file):
                 else:
                     ligpath = chunk
                     break
+
         return recpath, ligpath
 
     recs, ligs = set(), set()
@@ -866,8 +875,6 @@ def parse_single_types_entry(inp, outp, structure_type, extended=False,
                 rec = Path(Path(rec).parent,
                            Path(rec).with_suffix('').name[:-2] + rec.suffix)
             except ValueError:
-                print(rec)
-                exit(1)
                 raise
         return str(rec).replace(
             '.parquet', '.pdb').replace(
@@ -880,7 +887,6 @@ def parse_single_types_entry(inp, outp, structure_type, extended=False,
         sdf_idx = None
     else:
         inp, sdf_idx = get_sdf_and_index(inp)
-    print(inp)
     parser.file_to_parquets(inp, outp.parent,
                             outp.name.replace('.gninatypes', '.parquet'),
                             add_polar_hydrogens=False, sdf_idx=sdf_idx)
@@ -891,7 +897,6 @@ def parse_types_mp(types_file, input_base_path, output_base_path, extended,
     output_dir = mkdir(output_base_path)
     input_base_path = expand_path(input_base_path)
     recs, ligs = parse_types_file(types_file)
-    recs = []
     inputs = recs + ligs
     structure_types = ['receptor' for _ in recs] + ['ligand' for _ in ligs]
     outputs = [Path(output_dir, input) for input in inputs]
