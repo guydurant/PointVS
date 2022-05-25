@@ -275,7 +275,7 @@ if __name__ == '__main__':
                         help='Directory in which to store results')
     parser.add_argument('--pdbid', '-p', type=str,
                         help='PDB ID for structure to analyse')
-    parser.add_argument('--output_name', '-o', type=str, default = 'temp',
+    parser.add_argument('--output_name', '-n', type=str, default = 'temp',
                         help='Output name to save merged structure by and'
                             'also the folder it is saved in. Do not include .pdb. ')
     parser.add_argument('--input_receptor_file', '-r', type=str,
