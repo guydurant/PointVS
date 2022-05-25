@@ -2,6 +2,8 @@
 import argparse
 import urllib
 from pathlib import Path
+
+from requests import put
 import pymol
 
 import matplotlib
@@ -273,6 +275,9 @@ if __name__ == '__main__':
                         help='Directory in which to store results')
     parser.add_argument('--pdbid', '-p', type=str,
                         help='PDB ID for structure to analyse')
+    parser.add_argument('--output_name', '-o', type=str, default = 'temp',
+                        help='Output name to save merged structure by and'
+                            'also the folder it is saved in. Do not include .pdb. ')
     parser.add_argument('--input_receptor_file', '-r', type=str,
                         help='Input receptor PDB file')
     parser.add_argument('--input_ligand_file', '-l', type=str,
@@ -299,7 +304,7 @@ if __name__ == '__main__':
         raise RuntimeError(
             'Specify exactly one of either --pdbid or --input_receptor_file.')
     pd.set_option('display.float_format', lambda x: '%.3f' % x)
-    input_file = 'temp.pdb'
+    input_file = args.output_name + '.pdb'  
     merge_structures(args.input_receptor_file, args.input_ligand_file, output_fname=input_file)
     if not args.only_first or not args.split_by_mol:
         print(*[item[1][:10] for item in attribute(
