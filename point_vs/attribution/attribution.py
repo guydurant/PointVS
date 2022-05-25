@@ -19,6 +19,7 @@ from point_vs.attribution.process_pdb import score_and_colour_pdb
 from point_vs.models.load_model import load_model
 from point_vs.utils import ensure_writable, expand_path, mkdir, rename_lig, \
     find_latest_checkpoint
+from point_vs.attribution.constrained_attribution import merge_structures
 
 matplotlib.use('agg')
 
@@ -250,16 +251,18 @@ if __name__ == '__main__':
                         help='Directory in which to store results')
     parser.add_argument('--pdbid', '-p', type=str,
                         help='PDB ID for structure to analyse')
-    parser.add_argument('--input_file', '-i', type=str,
-                        help='Input PDB file')
+    parser.add_argument('--input_receptor_file', '-r', type=str,
+                        help='Input receptor PDB file')
+    parser.add_argument('--input_ligand_file', '-l', type=str,
+                        help='Input receptor PDB file')
     parser.add_argument('--only_process', '-o', type=str, nargs='?', default=[],
                         help='Only process ligands with the given 3 letter '
                              'residue codes (UNK, for example)')
-    parser.add_argument('--gnn_layer', '-l', type=int, default=1)
+    parser.add_argument('--gnn_layer', '-g', type=int, default=1)
     parser.add_argument('--track_atom_positions', '-t', action='store_true',
                         help='Record atom positions as information flows '
                              'through GNN, in PDB format')
-    parser.add_argument('--rename', '-r', action='store_true',
+    parser.add_argument('--rename', '-x', action='store_true',
                         help='Rename ligands to LIG, and only attribute to '
                              'the first one found')
     parser.add_argument('--only_first', '-f', action='store_true',
@@ -270,15 +273,16 @@ if __name__ == '__main__':
                              'colouring and calculating precision-recall')
     args = parser.parse_args()
     config.NOFIX = True
-    if isinstance(args.pdbid, str) + isinstance(args.input_file, str) != 1:
+    if isinstance(args.pdbid, str) + isinstance(args.input_receptor_file, str) != 1:
         raise RuntimeError(
-            'Specify exactly one of either --pdbid or --input_file.')
+            'Specify exactly one of either --pdbid or --input_receptor_file.')
     pd.set_option('display.float_format', lambda x: '%.3f' % x)
-
+    input_file = 'temp.pdb'
+    merge_structures(args.input_receptor_file, args.input_ligand_file, output_fname=input_file)
     if not args.only_first or not args.split_by_mol:
         print(*[item[1][:10] for item in attribute(
             args.attribution_type, args.model, args.output_dir, pdbid=args.pdbid,
-            input_file=args.input_file, only_process=args.only_process,
+            input_file=input_file, only_process=args.only_process,
             atom_blind=True, gnn_layer=args.gnn_layer,
             track_atom_positions=args.track_atom_positions,
             split_by_mol=args.split_by_mol, rename=args.rename,
@@ -286,7 +290,7 @@ if __name__ == '__main__':
     else:
         df = list(attribute(
             args.attribution_type, args.model, args.output_dir, pdbid=args.pdbid,
-            input_file=args.input_file, only_process=args.only_process,
+            input_file=input_file, only_process=args.only_process,
             atom_blind=True, gnn_layer=args.gnn_layer,
             track_atom_positions=args.track_atom_positions,
             split_by_mol=args.split_by_mol, rename=args.rename,
