@@ -19,13 +19,34 @@ from point_vs.attribution.process_pdb import score_and_colour_pdb
 from point_vs.models.load_model import load_model
 from point_vs.utils import ensure_writable, expand_path, mkdir, rename_lig, \
     find_latest_checkpoint
-from point_vs.attribution.constrained_attribution import merge_structures
 
 matplotlib.use('agg')
 
 from matplotlib import pyplot as plt
 
 ALLOWED_METHODS = ('atom_masking', 'cam')
+
+def merge_structures(*fnames, output_fname='merged.pdb'):
+    """Merge multiple structures into one file.
+
+    Any input or output format can be used, and multiple different input formats
+    can be used together.
+
+    Arguments:
+        fnames: two or more input structures
+        output_fname: the name of the merged output. The format is determined by
+            the file extension provided here (default: pdb).
+    """
+    for idx, fname in enumerate(fnames):
+        fname = str(Path(fname).expanduser())
+        pymol.cmd.load(fname, str(idx))
+    pymol.cmd.remove('resn hoh')
+    pymol.cmd.remove('solvent')
+    mkdir(output_fname.parent)
+    pymol.cmd.save(str(Path(output_fname).expanduser()),
+                   selection='({})'.format(
+                       ' or '.join([str(i) for i in range(len(fnames))])))
+    pymol.cmd.delete('all')
 
 
 def download_pdb_file(pdbid, output_dir):
