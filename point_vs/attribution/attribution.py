@@ -209,7 +209,7 @@ def attribute(attribution_type, model_file, output_dir, pdbid=None,
     precision_str = 'pdbid,lig:chain:res,rnd_avg_precision_lig,rnd_agv_precision_rec' \
                     'model_avg_precision_lig,model_avg_precision_rec,score\n'
     if write_stats:
-        if attribution_type in ('edge_attention', 'bond_masking', 'masking'):
+        if attribution_type in ('edge_attention', 'bond_masking', 'atom_masking'):
             for lig_id, (score, df, edge_indices, edge_scores) in dfs.items():
                 df.to_csv(output_dir / '{}_results.csv'.format(
                     lig_id.replace(':', '_').replace(
