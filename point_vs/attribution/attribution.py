@@ -43,7 +43,7 @@ def merge_structures(*fnames, output_fname='merged.pdb'):
         pymol.cmd.load(fname, str(idx))
     pymol.cmd.remove('resn hoh')
     pymol.cmd.remove('solvent')
-    mkdir(output_fname.parent)
+    # mkdir(output_fname.parent)
     pymol.cmd.save(str(Path(output_fname).expanduser()),
                    selection='({})'.format(
                        ' or '.join([str(i) for i in range(len(fnames))])))
