@@ -2,6 +2,7 @@
 import argparse
 import urllib
 from pathlib import Path
+import pymol
 
 import matplotlib
 import pandas as pd
