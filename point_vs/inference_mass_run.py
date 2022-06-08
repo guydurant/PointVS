@@ -33,6 +33,6 @@ models = [
 ]
 
 
-for i in casf_types_files:
+for c in casf_types_files:
 	for m in models:
 		os.system(f'python point_vs/inference.py ../{m}checkpoints/ {c} /data/localhost/not-backed-up/durant/pdbbind_2020_general_parquets  --wandb_project PointBAP --wandb_run inference')
