@@ -29,7 +29,7 @@ import wandb
 from point_vs.models.load_model import load_model
 from point_vs.preprocessing.data_loaders import get_data_loader, \
     PygPointCloudDataset, PointCloudDataset
-from point_vs.utils import expand_path
+from point_vs.utils import expand_path, find_latest_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -54,6 +54,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     checkpoint_path = expand_path(args.model_checkpoint)
+    if checkpoint_path.is_dir():
+        checkpoint_path= find_latest_checkpoint(checkpoint_path)
     checkpoint_path, model, model_kwargs, cmd_line_args = load_model(
         checkpoint_path, silent=False)
 
