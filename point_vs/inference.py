@@ -65,6 +65,7 @@ if __name__ == '__main__':
             Path(args.test_types).with_suffix('').name,
             checkpoint_path.with_suffix('').name)))
 
+    print(results_fname)
     # Is a validation set specified?
     if cmd_line_args['model'] in ('lucid', 'egnn'):
         dataset_class = PygPointCloudDataset
