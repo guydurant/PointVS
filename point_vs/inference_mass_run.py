@@ -1,6 +1,6 @@
 import os
 
-casf_type_files = ['/data/localhost/not-backed-up/durant/casf_2016_pymol_redocked.types',
+casf_types_files = ['/data/localhost/not-backed-up/durant/casf_2016_pymol_redocked.types',
 '/data/localhost/not-backed-up/durant/casf_2016_pymol_crossdocked_most_similiar_structure.types',
 '/data/localhost/not-backed-up/durant/casf_2016_pymol_crossdocked_least_similiar_structure.types',
 'casf_2016_pymol.types']
