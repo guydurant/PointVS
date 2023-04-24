@@ -1,29 +1,37 @@
 """Load a model from a saved checkpoint."""
 from pathlib import Path
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 from torch import nn
 
+from point_vs import logging
+from point_vs.models.geometric.egnn_multitask import MultitaskSatorrasEGNN
 from point_vs.models.geometric.egnn_lucid import PygLucidEGNN
 from point_vs.models.geometric.egnn_satorras import SartorrasEGNN
-from point_vs.utils import load_yaml, find_latest_checkpoint
+from point_vs.utils import load_yaml
+from point_vs.utils import find_latest_checkpoint
 
 Fname = Union[str, Path]
+LOG = logging.get_logger('PointVS')
 
 def load_model(
         model_path: Fname,
         silent: bool = True,
         fetch_args_only: bool = False,
-        init_path: bool = False) -> Tuple[Path, nn.Module, Dict, Dict]:
+        init_path: bool = False,
+        model_task: Optional[str] = None
+    ) -> Tuple[Path, Optional[nn.Module], Dict, Dict]:
     """Load model weights and arguments used to train model.
 
     Arguments:
         model_path: Location of the model checkpoint. Either a *.pt file, or
             a directory containing the checkpoints subdirectory in which case
             the latest saved weights will be loaded.
-        silent: Do not print messages to stdout.
+        silent: Do not log messages.
         fetch_args_only: Do not retrieve model weights.
         init_path: Create output directories.
+        model_task: (multitask models only) either load the pose or affinity
+            saved model.
 
     Returns:
         Tuple containing the path to the model weights file, the pytorch model
@@ -32,10 +40,11 @@ def load_model(
     """
     model_path = Path(model_path).expanduser()
     if model_path.is_dir():
-        print(
+        LOG.info(
             'Model specified is directory, searching for latest checkpoint...')
-        model_path = find_latest_checkpoint(model_path)
-        print('Found checkpoint at', '/'.join(str(model_path).split('/')[-3:]))
+        model_path = find_latest_checkpoint(model_path, model_task=model_task)
+        LOG.info(
+            'Found checkpoint at ' + '/'.join(str(model_path).split('/')[-3:]))
 
     model_kwargs = load_yaml(model_path.parents[1] / 'model_kwargs.yaml')
     cmd_line_args = load_yaml(model_path.parents[1] / 'cmd_args.yaml')
@@ -47,13 +56,14 @@ def load_model(
         model_kwargs['edge_attention'] = cmd_line_args['edge_attention']
 
     if fetch_args_only:
-        return None, None, model_kwargs, cmd_line_args
+        return model_path, None, model_kwargs, cmd_line_args
 
     model_type = cmd_line_args['model']
 
     model_class = {
         'egnn': SartorrasEGNN,
         'lucid': PygLucidEGNN,
+        'multitask': MultitaskSatorrasEGNN
     }
 
     if init_path:
@@ -70,6 +80,8 @@ def load_model(
                         weight_decay=cmd_line_args['weight_decay'],
                         use_1cycle=cmd_line_args['use_1cycle'],
                         warm_restarts=cmd_line_args['warm_restarts'],
+                        regression_loss=cmd_line_args.get(
+                            'regression_loss', 'mse'),
                         silent=silent, **model_kwargs)
 
     model.load_weights(model_path, silent=silent)

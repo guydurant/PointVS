@@ -1,23 +1,28 @@
 """Equivariant graph neural network class.
 
-The E_GCL layer is modified from the code released with the original EGNN paper,
+EGNNLayer is modified from the code released with the original EGNN paper,
 found at https://github.com/vgsatorras/egnn.
 """
 import torch
+import torch_scatter
 from torch import nn
 from torch.nn import functional as F
 from torch_geometric.nn.norm import GraphNorm  # pylint:disable=no-name-in-module
 from torch_geometric.utils import dropout_adj
 
-from point_vs.models.geometric.pnn_geometric_base import PNNGeometricBase, \
-    PygLinearPass, unsorted_segment_sum, unsorted_segment_mean
+from point_vs.global_objects import DEVICE
+from point_vs.models.geometric.pnn_geometric_base import PNNGeometricBase
+from point_vs.models.geometric.pnn_geometric_base import PygLinearPass
 from point_vs.utils import to_numpy
 
 
-class E_GCL(nn.Module):
+# Softmax scatter is bugged for MPS.
+_SOFTMAX_SCATTER_DEVICE = 'cpu' if str(DEVICE) == 'mps' else DEVICE
+
+
+class EGNNLayer(nn.Module):
     """Modified from https://github.com/vgsatorras/egnn"""
     # pylint: disable = R, W, C
-
     def __init__(
         self,
         input_nf: int,
@@ -29,7 +34,6 @@ class E_GCL(nn.Module):
         edge_residual: bool = False,
         edge_attention: bool = False,
         normalize: bool = False,
-        coords_agg: str = 'mean',
         tanh: bool = False,
         graphnorm: bool = False,
         update_coords: bool = True,
@@ -37,11 +41,12 @@ class E_GCL(nn.Module):
         node_attention: bool = False,
         attention_activation_fn: bool = 'sigmoid',
         gated_residual: bool = False,
-        rezero: bool = False
+        rezero: bool = False,
+        softmax_attention: bool = False,
     ):
         assert not (gated_residual and rezero), 'gated_residual and rezero ' \
                                                 'are incompatible'
-        super(E_GCL, self).__init__()
+        super(EGNNLayer, self).__init__()
         input_edge = input_nf if permutation_invariance else input_nf * 2
         self.gated_residual = gated_residual
         self.rezero = rezero
@@ -49,7 +54,6 @@ class E_GCL(nn.Module):
         self.edge_residual = edge_residual
         self.edge_attention = edge_attention
         self.normalize = normalize
-        self.coords_agg = coords_agg
         self.tanh = tanh
         self.epsilon = 1e-8
         self.use_coords = update_coords
@@ -64,8 +68,9 @@ class E_GCL(nn.Module):
             'tanh': nn.Tanh,
             'relu': nn.ReLU,
             'silu': nn.SiLU
-        }[attention_activation_fn]
+        }[attention_activation_fn] if not softmax_attention else nn.Identity
         self.attention_activation = attention_activation
+        self.softmax_attention = softmax_attention
         edge_coords_nf = 1
 
         self.edge_mlp = nn.Sequential(
@@ -127,10 +132,15 @@ class E_GCL(nn.Module):
         return out
 
     def node_model(self, x, edge_index, m_ij):
-        row, col = edge_index
+        row, _ = edge_index
 
         if self.edge_attention:
             att_val = self.att_mlp(m_ij)
+            if self.softmax_attention:
+                att_val = torch_scatter.composite.scatter_softmax(
+                    att_val.to(_SOFTMAX_SCATTER_DEVICE),
+                    row.to(_SOFTMAX_SCATTER_DEVICE), 0)
+                att_val = att_val.to(DEVICE)
             self.att_val = to_numpy(att_val)
             agg = unsorted_segment_sum(
                 att_val * m_ij, row, num_segments=x.size(0))
@@ -160,12 +170,7 @@ class E_GCL(nn.Module):
             return coord
         row, col = edge_index
         trans = coord_diff * self.coord_mlp(edge_feat)
-        if self.coords_agg == 'sum':
-            agg = unsorted_segment_sum(trans, row, num_segments=coord.size(0))
-        elif self.coords_agg == 'mean':
-            agg = unsorted_segment_mean(trans, row, num_segments=coord.size(0))
-        else:
-            raise Exception('Wrong coords_agg parameter' % self.coords_agg)
+        agg = unsorted_segment_mean(trans, row, num_segments=coord.size(0))
         coord += agg
         self.intermediate_coords = to_numpy(coord)
         return coord
@@ -202,7 +207,7 @@ class E_GCL(nn.Module):
 
 
 class SartorrasEGNN(PNNGeometricBase):
-    """Equivariant network based on the E_GCL layer."""
+    """Equivariant network based on EGNNLayer."""
     # pylint: disable = R, W0201, W0613
     def build_net(
         self,
@@ -218,22 +223,17 @@ class SartorrasEGNN(PNNGeometricBase):
         tanh: bool = True,
         dropout: float = 0.0,
         graphnorm: bool = True,
-        classify_on_edges: bool = False,
-        classify_on_feats: bool = True,
         multi_fc: bool = False,
         update_coords: bool = True,
         permutation_invariance: bool = False,
         attention_activation_fn: str = 'sigmoid',
         node_attention: bool = False,
-        node_attention_final_only: bool = False,
-        edge_attention_final_only: bool = False,
-        node_attention_first_only: bool = False,
-        edge_attention_first_only: bool = False,
         gated_residual: bool = False,
         rezero: bool = False,
         model_task: str = 'classification',
         include_strain_info: bool = False,
         final_softplus: bool = False,
+        softmax_attention: bool = False,
         **kwargs
     ):
         """
@@ -257,22 +257,12 @@ class SartorrasEGNN(PNNGeometricBase):
                 improves in stability but it may decrease in accuracy.
             dropout: dropout rate for edge/node/coordinate MLPs.
             graphnorm: apply graph normalisation.
-            classify_on_edges: final classification on edges.
-            classify_on_feats: final classification on features (recommended).
             multi_fc: multiple fully connected layers at the end.
             update_coords: coordinates update at each layer.
             permutation_invariance: edges embeddings are summed rather than
                 concatenated.
             attention_activation_fn: activation function for attention MLPs.
             node_attention: apply attention MLPs to node embeddings.
-            node_attention_final_only: only apply attention to nodes in final
-                layer.
-            edge_attention_final_only: only apply attention to edges in final
-                layer.
-            node_attention_first_only: only apply attention to nodes in first
-                layer.
-            edge_attention_first_only: only apply attention to nodes in first
-                layer.
             gated_residual: residual connections are gated by learnable scalar
                 value.
             rezero: apply ReZero normalisation.
@@ -288,54 +278,26 @@ class SartorrasEGNN(PNNGeometricBase):
         self.rezero = rezero
         self.model_task = model_task
         self.include_strain_info = include_strain_info
+        self.softmax_attention = softmax_attention
 
-        assert classify_on_feats or classify_on_edges, \
-            'We must use either or both of classify_on_feats and ' \
-            'classify_on_edges'
         assert not (gated_residual and rezero), \
             'gated_residual and rezero are incompatible'
-        for i in range(0, num_layers):
-            # apply node/edge attention or not?
-            if node_attention:
-                if not node_attention_first_only and not \
-                        node_attention_final_only:
-                    apply_node_attention = True
-                elif node_attention_first_only and i == 0:
-                    apply_node_attention = True
-                elif node_attention_final_only and i == num_layers - 1:
-                    apply_node_attention = True
-                else:
-                    apply_node_attention = False
-            else:
-                apply_node_attention = False
-
-            if edge_attention:
-                if not edge_attention_first_only and not \
-                        edge_attention_final_only:
-                    apply_edge_attention = True
-                elif edge_attention_first_only and i == 0:
-                    apply_edge_attention = True
-                elif edge_attention_final_only and i == num_layers - 1:
-                    apply_edge_attention = True
-                else:
-                    apply_edge_attention = False
-            else:
-                apply_edge_attention = False
-
-            layers.append(E_GCL(k, k, k,
+        for _ in range(0, num_layers):
+            layers.append(EGNNLayer(k, k, k,
                                 edges_in_d=3,
                                 act_fn=act_fn,
                                 residual=residual,
-                                edge_attention=apply_edge_attention,
+                                edge_attention=edge_attention,
                                 normalize=normalize,
                                 graphnorm=graphnorm,
                                 tanh=tanh, update_coords=update_coords,
                                 permutation_invariance=permutation_invariance,
                                 attention_activation_fn=attention_activation_fn,
-                                node_attention=apply_node_attention,
+                                node_attention=node_attention,
                                 edge_residual=edge_residual,
                                 gated_residual=gated_residual,
-                                rezero=rezero))
+                                rezero=rezero,
+                                softmax_attention=softmax_attention))
 
         if include_strain_info:
             k += 1
@@ -345,19 +307,13 @@ class SartorrasEGNN(PNNGeometricBase):
             fc_layer_dims = ((k, dim_output),)
 
         feats_linear_layers = []
-        edges_linear_layers = []
         for idx, (in_dim, out_dim) in enumerate(fc_layer_dims):
             feats_linear_layers.append(nn.Linear(in_dim, out_dim))
-            edges_linear_layers.append(nn.Linear(in_dim, out_dim))
             if idx < len(fc_layer_dims) - 1:
                 feats_linear_layers.append(nn.SiLU())
-                edges_linear_layers.append(nn.SiLU())
         if final_softplus:
-            feats_linear_layers.append(nn.ReLU())
-        if classify_on_feats:
-            self.feats_linear_layers = nn.Sequential(*feats_linear_layers)
-        if classify_on_edges:
-            self.edges_linear_layers = nn.Sequential(*edges_linear_layers)
+            feats_linear_layers.append(nn.Softplus())
+        self.feats_linear_layers = nn.Sequential(*feats_linear_layers)
         return nn.Sequential(*layers)
 
     def get_embeddings(self, feats, edges, coords, edge_attributes, batch):
@@ -371,3 +327,21 @@ class SartorrasEGNN(PNNGeometricBase):
                 h=feats, edge_index=edges, coord=coords,
                 edge_attr=edge_attributes, edge_messages=edge_messages)
         return feats, edge_messages
+
+
+def unsorted_segment_sum(data, segment_ids, num_segments):
+    result_shape = (num_segments, data.size(1))
+    result = data.new_full(result_shape, 0)  # Init empty result tensor.
+    segment_ids = segment_ids.unsqueeze(-1).expand(-1, data.size(1))
+    result.scatter_add_(0, segment_ids, data)
+    return result
+
+
+def unsorted_segment_mean(data, segment_ids, num_segments):
+    result_shape = (num_segments, data.size(1))
+    segment_ids = segment_ids.unsqueeze(-1).expand(-1, data.size(1))
+    result = data.new_full(result_shape, 0)  # Init empty result tensor.
+    count = data.new_full(result_shape, 0)
+    result.scatter_add_(0, segment_ids, data)
+    count.scatter_add_(0, segment_ids, torch.ones_like(data))
+    return result / count.clamp(min=1)

@@ -23,21 +23,43 @@ from rdkit.Chem import AllChem, SDMolSupplier, MolFromMol2File
 from rdkit.Chem.rdMolAlign import CalcRMS
 from scipy.stats import pearsonr
 
+from point_vs import logging
 from point_vs.constants import AA_TRIPLET_CODES
 
 
-def find_latest_checkpoint(root):
-    max_epoch = -1
-    for fname in expand_path(root, 'checkpoints').glob('*.pt'):
-        max_epoch = max(
-            max_epoch, int(fname.with_suffix('').name.split('_')[-1]))
-    if max_epoch > -1:
-        return Path(root, 'checkpoints', 'ckpt_epoch_{}.pt'.format(max_epoch))
-    raise RuntimeError('Could not find saved model in', root)
+LOG = logging.get_logger('PointVS')
+
+
+def find_latest_checkpoint(root, model_task=None):
+    """Find latest saved checkpoint in directory."""
+    if model_task is not None and model_task not in ('pose', 'affinity'):
+        raise RuntimeError(
+            'model_task must be either pose or affinity if specified.')
+    if not model_task:
+        model_task = ''
+    glob_str = model_task + '*.pt'
+    try:
+        return max(Path(root, 'checkpoints').glob(glob_str),
+                   key=lambda f: f.stat().st_ctime)
+    except ValueError as exc:
+        raise ValueError(f'No checkpoints found in {root}.') from exc
+
+def flatten_nested_iterables(list_tup, unpack_arrays=False):
+    """Flatten an arbitrarily deep nested list or tuple."""
+    if isinstance(list_tup, (list, tuple)):
+        if isinstance(list_tup[0], (list, tuple)):
+            if len(list_tup) > 1:
+                raise RuntimeError(
+                    'Nested iterables have more than one iterable inside them.')
+            return flatten_nested_iterables(list_tup[0], unpack_arrays)
+        return list_tup[0]
+    if isinstance(list_tup, (np.ndarray, torch.Tensor)) and unpack_arrays:
+        return list_tup
+    return list_tup
 
 
 def get_n_cols(text_file):
-    with open(expand_path(text_file), 'r') as f:
+    with open(expand_path(text_file), 'r', encoding='utf-8') as f:
         line = f.readline()
     return len(line.strip().split())
 
@@ -116,16 +138,16 @@ def find_delta_E(sdf, multiple_structures=False):
             pymol_sdf = str(py_mollify(sdf))
             mol = SDMolSupplier(pymol_sdf)[0]
             if mol is not None:
-                print('Pymolification success for', Path(sdf).parent.name,
-                      '(sdf)')
+                LOG.info(
+                    f'Pymolification success for {Path(sdf).parent.name} (sdf)')
             else:
                 mol = MolFromMol2File(pymol_sdf.replace('.sdf', '.mol2'))
                 if mol is None:
                     res[idx] = 'pymol_fail'
                     continue
                 else:
-                    print('Pymolification success for',
-                          Path(sdf).parent.name, '(mol2)')
+                    LOG.info(
+                        f'Pymolification success for {Path(sdf).parent.name} (mol2)')
         if not idx in res.keys():
             Chem.AddHs(mol)
             original_mols[idx] = mol
@@ -161,8 +183,6 @@ def find_delta_E(sdf, multiple_structures=False):
         else:
             res[idx] = (original_energies[idx] - lowest_energy, rmsd)
 
-    print(res)
-    print(original_sdf)
     return res
 
 
@@ -380,14 +400,14 @@ def execute_cmd(cmd, raise_exceptions=True, silent=True):
         shell=True,
         capture_output=True)
     if proc_result.stderr and raise_exceptions:
-        print(proc_result.stderr)
+        LOG.exception(proc_result.stderr)
         raise subprocess.CalledProcessError(
             returncode=proc_result.returncode,
             cmd=proc_result.args,
             stderr=proc_result.stderr)
     res = proc_result.stdout.decode('utf-8')
     if proc_result.stdout and not silent:
-        print(res)
+        LOG.info(res)
     return res
 
 
@@ -577,7 +597,7 @@ def print_df(df):
     with pd.option_context('display.max_colwidth', None):
         with pd.option_context('display.max_rows', None):
             with pd.option_context('display.max_columns', None):
-                print(df)
+                LOG.info(df)
 
 
 def no_return_parallelise(func, *args, cpus=-1):
@@ -673,6 +693,7 @@ def format_time(t):
     Raises:
         ValueError if t < 0
     """
+    t = t or 0
     if t < 0:
         raise ValueError('Time must be positive.')
 
@@ -702,33 +723,3 @@ class Timer:
     def __exit__(self, *args):
         self.end = time.time()
         self.interval = self.end - self.start
-
-
-def print_with_overwrite(*s, spacer=' '):
-    """Prints to console, but overwrites previous output, rather than creating
-    a newline.
-
-    Arguments:
-        s: string (possibly with multiple lines) to print
-        spacer: whitespace character to use between words on each line
-    """
-    s = '\n'.join(
-        [spacer.join([str(word) for word in substring]) for substring in s])
-    erase = '\x1b[2K'
-    up_one = '\x1b[1A'
-    lines = s.split('\n')
-    n_lines = len(lines)
-    console_width = shutil.get_terminal_size((0, 20)).columns
-    for idx in range(n_lines):
-        lines[idx] += ' ' * max(0, console_width - len(lines[idx]))
-    print((erase + up_one) * (n_lines - 1) + s, end='\r', flush=True)
-
-
-def plot_with_smoothing(y, gap=100, figsize=(12, 7.5), ax=None):
-    """Plot averages with a window given by <gap>."""
-    if ax is None:
-        _, ax = plt.subplots(1, 1, figsize=figsize)
-    plt.cla()
-    x, y = condense(y, gap=gap)
-    ax.plot(x, y, 'k-')
-    return ax

@@ -1,3 +1,4 @@
+"""Extract protein atom importance from fragment screening hits (for Lucy)."""
 import argparse
 from collections import defaultdict
 
@@ -5,11 +6,15 @@ import numpy as np
 import pandas as pd
 from rdkit import Chem
 
+from point_vs import logging
 from point_vs.attribution.attribution import attribute, pdb_coords_to_identifier
 from point_vs.constants import AA_TRIPLET_CODES, VDW_RADII
 from point_vs.dataset_generation.types_to_parquet import StructuralFileParser
 from point_vs.models.load_model import load_model
 from point_vs.utils import expand_path, mkdir
+
+
+LOG = logging.get_logger('PointVS')
 
 
 def get_ligand_to_hbond_map(pdb, lig_name='LIG'):
@@ -76,7 +81,7 @@ def find_identifier(coords_to_identifier, coords):
 def binding_events_to_ranked_protein_atoms(
         input_fnames, model_path, output_dir, ligand_name,
         attribution='edge_attention', layer=1, use_rank=False,
-        ligand_chain='A'):
+        ligand_chain='A', model_task=None):
     """Use multiple protein-ligand structures to score protein atoms.
 
     The importance of each protein atom is assumed to be related to its mean
@@ -97,6 +102,7 @@ def binding_events_to_ranked_protein_atoms(
         layer: which layer from the GNN to take attention weights from for
             scoring
         use_rank: use ranked order of bond scores in place of raw bond scores
+        model_task: pose or affinity (type of model to load, multitask only)
 
     Returns:
         pd.DataFrame with columns:
@@ -134,7 +140,7 @@ def binding_events_to_ranked_protein_atoms(
     with open(expand_path(input_fnames), 'r') as f:
         fnames = [expand_path(fname.strip()) for fname in
                   f.readlines() if len(fname.strip())]
-    _, model, _, _ = load_model(expand_path(model_path))
+    _, model, _, _ = load_model(expand_path(model_path), model_task=model_task)
 
     processed_dfs = []
     prot_atom_to_max_lig_atom = defaultdict(list)
@@ -205,8 +211,8 @@ def binding_events_to_ranked_protein_atoms(
                     pass
             df.reset_index(drop=True, inplace=True)
             processed_dfs.append(df)
-        print('Completed file ', fname.name, ', with scores: ', ', '.join(
-            ['{:.3f}'.format(score) for score in scores]), sep='')
+        scores_str = ', '.join(['{:.3f}'.format(score) for score in scores])
+        LOG.info(f'Completed file {fname.name}, with scores: {scores_str}')
 
     processed_dfs = [df.set_index('protein_atom') for df in processed_dfs]
     concat_df = processed_dfs[0].join(processed_dfs[1:])
@@ -354,7 +360,7 @@ def pharmacophore_df_to_mols(
         filtered_df = filtered_df[filtered_df['score'] != -np.inf]
         if not use_rank:
             filtered_df = filtered_df[filtered_df['score'] > 0]
-        print(filtered_df)
+        LOG.info(filtered_df)
 
         smiles = atom_type * len(filtered_df)
         mol = Chem.MolFromSmiles(smiles)
@@ -404,20 +410,25 @@ if __name__ == '__main__':
     parser.add_argument('--ligand_chain', '-chain', type=str, default='A',
                         help='What chain will the ligand be labeled as? Either '
                              'any letter A-Z or " "')
+    parser.add_argument('--model_task', type=str,
+                        help='(multitask models only) load pose or affinity '
+                             'saved model files')
 
     args = parser.parse_args()
+    output_dir = mkdir(args.output_dir)
+    LOG = logging.get_logger('PointVS', log_path=output_dir)
     rank_df = binding_events_to_ranked_protein_atoms(
         args.filenames, args.model, args.output_dir,
         args.ligand_residue_code.upper(), attribution=args.scoring_method,
         layer=args.layer, use_rank=args.use_rank,
-        ligand_chain=args.ligand_chain)
+        ligand_chain=args.ligand_chain,
+        model_task=args.model_task)
     df = scores_to_pharmacophore_df(
         args.apo_protein, rank_df, use_rank=args.use_rank)
-    print(df[:10])
-    print()
+    LOG.info(df[:10])
     hba_mol, hbd_mol = pharmacophore_df_to_mols(
         df, use_rank=args.use_rank, cutoff=args.cutoff)
-    output_dir = mkdir(args.output_dir)
+    
     with Chem.SDWriter(str(output_dir / 'hba.sdf')) as w:
         w.write(hba_mol)
     with Chem.SDWriter(str(output_dir / 'hbd.sdf')) as w:

@@ -4,6 +4,8 @@ import torch
 from scipy.stats import rankdata
 from torch_geometric.data import Data
 
+from point_vs import logging
+from point_vs.global_objects import DEVICE
 from point_vs.models.geometric.egnn_satorras import SartorrasEGNN
 from point_vs.models.geometric.pnn_geometric_base import PNNGeometricBase
 from point_vs.models.point_neural_network_base import to_numpy
@@ -11,7 +13,10 @@ from point_vs.preprocessing.pyg_single_item_dataset import \
     get_pyg_single_graph_for_inference
 from point_vs.utils import expand_path
 
+
 SIGMOID = False
+LOG = logging.get_logger('PointVS')
+
 
 def attention_wrapper(**kwargs):
     """Dummy fn."""
@@ -99,8 +104,8 @@ def bond_masking(model, p, v, m=None, bs=32, edge_indices=None, edge_attrs=None,
         scores.append(
             original_score - extract_score(graph))
         if not i % 500:
-            print('{0}/{1}'.format(i, edge_indices.shape[1]), scores[-1],
-                  max(scores))
+            LOG.debug('{0}/{1}'.format(i, edge_indices.shape[1]),
+                                       scores[-1], max(scores))
     return np.array(scores)
 
 
@@ -147,7 +152,7 @@ def track_position_changes(
         displacements.append(np.sqrt(sq_displacement))
         # original_coords = model.layers[layer].intermediate_coords
     displacements = np.vstack(displacements).T
-    print(np.sum(displacements, axis=1))
+    LOG.debug(f'{np.sum(displacements, axis=1)}')
     return np.sum(displacements, axis=1)
 
 
@@ -304,26 +309,6 @@ def edge_attention(
     return model.layers[gnn_layer].att_val.reshape((-1,))
 
 
-def edge_embedding_attribution(
-        model, p, v, edge_indices=None, edge_attrs=None, **kwargs):
-    assert isinstance(model, SartorrasEGNN), \
-        'Edge based attribution only compatable with SartorrasEGNN'
-    graph = get_pyg_single_graph_for_inference(Data(
-        x=v.squeeze(),
-        edge_index=edge_indices,
-        edge_attr=edge_attrs,
-        pos=p.squeeze(),
-    ))
-
-    feats, edges, coords, edge_attributes, batch = model.unpack_graph(
-        graph)
-    _, edge_embeddings = model.get_embeddings(
-        feats, edges, coords, edge_attributes, batch)
-    edge_scores = to_numpy(model.edges_linear_layers(edge_embeddings))
-
-    return edge_scores
-
-
 def cam(model, p, v, m=None, edge_indices=None, edge_attrs=None, **kwargs):
     """Perform class activation mapping (CAM) on input.
 
@@ -365,16 +350,15 @@ def cam(model, p, v, m=None, edge_indices=None, edge_attrs=None, **kwargs):
                 break
             x = layer(x)
         x = to_numpy(x[1].squeeze())
-        if not model.linear_gap:
-            # We can directly look at the contribution of each node by taking
-            # the dot product between each node's features and the final FC
-            # layer
-            final_layer_weights = to_numpy(model.layers[-1].weight).T
-            x = x @ final_layer_weights
-            if liftsamples == 1:
-                return x
-            x = [np.mean(x[n:n + liftsamples]) for n in
-                 range(len(x) // liftsamples)]
+        # We can directly look at the contribution of each node by taking
+        # the dot product between each node's features and the final FC
+        # layer
+        final_layer_weights = to_numpy(model.layers[-1].weight).T
+        x = x @ final_layer_weights
+        if liftsamples == 1:
+            return x
+        x = [np.mean(x[n:n + liftsamples]) for n in
+                range(len(x) // liftsamples)]
     return np.array(x)
 
 
@@ -426,8 +410,8 @@ def atom_masking(
             p = p.reshape(1, *p.shape)
             v = v.reshape(1, *v.shape)
         for i in range(n_atoms):
-            p_input_matrix = torch.zeros(p.size(1) - 1, p.size(2)).to(_device)
-            v_input_matrix = torch.zeros(v.size(1) - 1, v.size(2)).to(_device)
+            p_input_matrix = torch.zeros(p.size(1) - 1, p.size(2)).to(DEVICE)
+            v_input_matrix = torch.zeros(v.size(1) - 1, v.size(2)).to(DEVICE)
 
             p_input_matrix[:i, :] = p[:, :i, :]
             p_input_matrix[i:, :] = p[:, i + 1:, :]
@@ -458,11 +442,11 @@ def atom_masking(
                     scores[i] = original_score - float(to_numpy(x))
     else:
         original_score = float(to_numpy(torch.sigmoid(model((p, v, m)))))
-        p_input_matrix = torch.zeros(bs, p.size(1) - 1, p.size(2)).to(_device)
-        v_input_matrix = torch.zeros(bs, v.size(1) - 1, v.size(2)).to(_device)
-        m_input_matrix = torch.ones(bs, m.size(1) - 1).bool().to(_device)
+        p_input_matrix = torch.zeros(bs, p.size(1) - 1, p.size(2)).to(DEVICE)
+        v_input_matrix = torch.zeros(bs, v.size(1) - 1, v.size(2)).to(DEVICE)
+        m_input_matrix = torch.ones(bs, m.size(1) - 1).bool().to(DEVICE)
         for i in range(p.size(1) // bs):
-            print(i * bs)
+            LOG.debug(f'{i * bs}')
             for j in range(bs):
                 global_idx = bs * i + j
                 p_input_matrix[j, :, :] = p[0,
@@ -475,9 +459,9 @@ def atom_masking(
                 p_input_matrix, v_input_matrix,
                 m_input_matrix)))).squeeze() - original_score
         for i in range(bs * (p.size(1) // bs), p.size(1)):
-            masked_p = p[:, torch.arange(p.size(1)) != i, :].to(_device)
-            masked_v = v[:, torch.arange(v.size(1)) != i, :].to(_device)
-            masked_m = m[:, torch.arange(m.size(1)) != i].to(_device)
+            masked_p = p[:, torch.arange(p.size(1)) != i, :].to(DEVICE)
+            masked_v = v[:, torch.arange(v.size(1)) != i, :].to(DEVICE)
+            masked_m = m[:, torch.arange(m.size(1)) != i].to(DEVICE)
             scores[i] = original_score - float(to_numpy(torch.sigmoid(
                 model((masked_p, masked_v, masked_m)))))
     return scores

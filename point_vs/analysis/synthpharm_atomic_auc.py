@@ -1,3 +1,4 @@
+"""Statistics on attribution (for Tom)."""
 import argparse
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import average_precision_score
 from torch_geometric.loader import DataLoader
 
+from point_vs import logging
 from point_vs.attribution.attribution import load_model
 from point_vs.attribution.attribution_fns import atom_masking, cam
 from point_vs.preprocessing.data_loaders import SynthPharmDataset
@@ -13,15 +15,18 @@ from point_vs.utils import expand_path, load_yaml, mkdir, PositionDict, \
     coords_to_string
 
 
+LOG = logging.get_logger('PointVS')
+
+
 def get_stats_from_dir(model_fname, directory, types, attribution_fn,
-                       no_receptor=False):
-    _, model, model_kwargs, cmd_line_args = load_model(model_fname)
+                       no_receptor=False, model_task=None):
+    _, model, _, cmd_line_args = load_model(model_fname, model_task=model_task)
     model = model.eval()
     directory = expand_path(directory)
     atom_labels_dict = load_yaml(directory.parent / 'atomic_labels.yaml')
-    print('Loaded atomic labels')
+    LOG.info('Loaded atomic labels')
     mol_label_dict = load_yaml(directory.parent / 'labels.yaml')
-    print('Loaded molecular labels')
+    LOG.info('Loaded molecular labels')
     lig_fnames, pharm_fnames, fname_indices = [], [], []
     lig_random_precisions = []
     rec_random_precisions = []
@@ -147,30 +152,34 @@ if __name__ == '__main__':
     parser.add_argument('output_dir', type=str, help='Where to store graphs')
     parser.add_argument('--no_receptor', '-n', action='store_true',
                         help='Do not include receptor information')
+    parser.add_argument('--model_task', type=str,
+                        help='(multitask models only) load classification or '
+                             'regression saved model files')
     args = parser.parse_args()
 
     for attr_fn, fn_name in zip((cam, atom_masking), ('CAM', 'Masking')):
         lrp, lap, rrp, rap, lig_positions, rec_positions = get_stats_from_dir(
-            args.model, args.input_dir, args.types, attr_fn, args.no_receptor)
+            args.model, args.input_dir, args.types, attr_fn, args.no_receptor,
+            args.model_task)
         if args.model.endswith('.pt'):
             project_name = expand_path(args.model).parents[1].name
         else:
             project_name = expand_path(args.model).name
-        print()
-        print('Project: {0}, Attribution method: {1}'.format(
+        LOG.info()
+        LOG.info('Project: {0}, Attribution method: {1}'.format(
             project_name, fn_name))
-        print('Mean average precision (ligand):               {:.4f}'.format(
+        LOG.info('Mean average precision (ligand):               {:.4f}'.format(
             np.mean(lap)))
-        print('Random average precision (ligand):             {:.4f}'.format(
+        LOG.info('Random average precision (ligand):             {:.4f}'.format(
             np.mean(lrp)))
-        print('Mean average precision (receptor):             {:.4f}'.format(
+        LOG.info('Mean average precision (receptor):             {:.4f}'.format(
             np.mean(rap)))
-        print('Random average precision (receptor):           {:.4f}'.format(
+        LOG.info('Random average precision (receptor):           {:.4f}'.format(
             np.mean(rrp)))
-        print()
-        print('Mean top scoring bonding atom rank (ligand):   {:.4f}'.format(
+        LOG.info()
+        LOG.info('Mean top scoring bonding atom rank (ligand):   {:.4f}'.format(
             np.mean(lig_positions)))
-        print('Mean top scoring bonding atom rank (receptor): {:.4f}'.format(
+        LOG.info('Mean top scoring bonding atom rank (receptor): {:.4f}'.format(
             np.mean(rec_positions)))
         plot_rank_histogram(
             lig_positions, rec_positions, project_name,

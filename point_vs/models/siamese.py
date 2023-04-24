@@ -9,11 +9,15 @@ import yaml
 from torch import nn
 from torch.nn.functional import silu
 
+from point_vs import logging
+from point_vs.global_objects import DEVICE
 from point_vs.analysis.top_n import top_n
 from point_vs.models.geometric.pnn_geometric_base import PNNGeometricBase
 from point_vs.models.point_neural_network_base import PointNeuralNetworkBase
-from point_vs.utils import mkdir, \
-    to_numpy
+from point_vs.utils import mkdir, to_numpy
+
+
+LOG = logging.get_logger('PointVS')
 
 
 class SiameseNeuralNetwork(PNNGeometricBase, ABC):
@@ -61,10 +65,10 @@ class SiameseNeuralNetwork(PNNGeometricBase, ABC):
         self.wandb_run = wandb_run
 
         self.linear_layers = [
-            nn.Linear(embed_size, 64).to(_device), nn.Linear(64, 32).to(_device),
-            nn.Linear(32, 1).to(_device)]
-        self.activation_layers = [nn.SiLU().to(_device), nn.SiLU().to(_device),
-                                  nn.Identity().to(_device)]
+            nn.Linear(embed_size, 64).to(DEVICE), nn.Linear(64, 32).to(DEVICE),
+            nn.Linear(32, 1).to(DEVICE)]
+        self.activation_layers = [nn.SiLU().to(DEVICE), nn.SiLU().to(DEVICE),
+                                  nn.Identity().to(DEVICE)]
 
         self.optimiser = torch.optim.Adam(
             self.parameters(), lr=self.lr, weight_decay=weight_decay)
@@ -85,11 +89,11 @@ class SiameseNeuralNetwork(PNNGeometricBase, ABC):
                 yaml.dump(model_kwargs, f)
 
         pc = self.param_count
-        print('Model parameters:', pc)
+        LOG.info('Model parameters:', pc)
         if self.wandb_project is not None:
             wandb.log({'Parameters': pc})
 
-        self.to(_device)
+        self.to(DEVICE)
 
     def forward(self, rec_graph, lig_graph):
         rec_embedding = self.rec_nn(rec_graph)
@@ -100,7 +104,7 @@ class SiameseNeuralNetwork(PNNGeometricBase, ABC):
             x = act(linear(x))
         return x
 
-    def process_graph(self, rec_graph, lig_graph):
+    def unpack_input_data_and_predict(self, rec_graph, lig_graph):
         y_true = rec_graph.y.float()
         y_pred = self(rec_graph, lig_graph).reshape(-1, )
         ligands = lig_graph.lig_fname
@@ -126,7 +130,7 @@ class SiameseNeuralNetwork(PNNGeometricBase, ABC):
         for self.epoch in range(self.init_epoch, epochs):
             for self.batch, (rec_graph, lig_graph) in enumerate(
                     zip(rec_dl, lig_dl)):
-                y_pred, y_true, ligands, receptors = self.process_graph(
+                y_pred, y_true, ligands, receptors = self.unpack_input_data_and_predict(
                     rec_graph, lig_graph)
                 self.get_mean_preds(y_true, y_pred)
                 loss_ = self.backprop(y_true, y_pred)
@@ -166,7 +170,7 @@ class SiameseNeuralNetwork(PNNGeometricBase, ABC):
         with torch.no_grad():
             for self.batch, (rec_graph, lig_graph) in enumerate(
                     data_loader):
-                y_pred, y_true, ligands, receptors = self.process_graph(
+                y_pred, y_true, ligands, receptors = self.unpack_input_data_and_predict(
                     rec_graph, lig_graph)
 
                 y_true_np = to_numpy(y_true).reshape((-1,))

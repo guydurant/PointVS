@@ -8,16 +8,26 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import psutil
+
 import torch
 from torch.nn.functional import one_hot
 from torch.utils.data import DataLoader
 from torch_geometric.loader import DataLoader as GeoDataLoader
 from torch_geometric.data import Data
 
-from point_vs.preprocessing.preprocessing import make_box, \
-    concat_structs, make_bit_vector, uniform_random_rotation, generate_edges
-from point_vs.utils import expand_path, shorten_home, get_n_cols
+from point_vs import logging
+from point_vs.global_objects import NUM_WORKERS
+from point_vs.preprocessing.preprocessing import make_box
+from point_vs.preprocessing.preprocessing import concat_structs
+from point_vs.preprocessing.preprocessing import make_bit_vector
+from point_vs.preprocessing.preprocessing import uniform_random_rotation
+from point_vs.preprocessing.preprocessing import generate_edges
+from point_vs.utils import shorten_home
+from point_vs.utils import get_n_cols
+from point_vs.utils import expand_path
+
+
+LOG = logging.get_logger('PointVS')
 
 
 class PointCloudDataset(torch.utils.data.Dataset):
@@ -82,8 +92,7 @@ class PointCloudDataset(torch.utils.data.Dataset):
 
         self.fname_suffix = fname_suffix
         if not self.base_path.exists():
-            raise FileNotFoundError(
-                'Dataset {} does not exist.'.format(self.base_path))
+            raise FileNotFoundError(f'Dataset {self.base_path} does not exist.')
         self.polar_hydrogens = polar_hydrogens
         self.use_atomic_numbers = use_atomic_numbers
         self.compact = compact
@@ -176,8 +185,8 @@ class PointCloudDataset(torch.utils.data.Dataset):
                         self.sample_weights, len(self.sample_weights)
                     )
         self.labels = labels
-        print('There are', len(self.ligand_fnames), 'training points in',
-              shorten_home(base_path))
+        LOG.info(
+            f'There are {len(self.ligand_fnames)} data points in {shorten_home(base_path)}')
 
         # apply random rotations to ALL coordinates?
         self.transformation = uniform_random_rotation if rot else lambda x: x
@@ -297,7 +306,7 @@ class PointCloudDataset(torch.utils.data.Dataset):
         v = make_bit_vector(
             struct.types.to_numpy(), self.n_features, self.compact)
 
-        return p, v, struct, force_zero_label
+        return p.float(), v.float(), struct, force_zero_label
 
     def __getitem__(self, item):
         """Given an index, locate and preprocess relevant parquet file.
@@ -384,7 +393,7 @@ class PygPointCloudDataset(PointCloudDataset):
 
 class SynthPharmDataset(PygPointCloudDataset):
 
-    def __init__(self, no_receptor=False, *args, **kwargs):
+    def __init__(self, *args, no_receptor=False, **kwargs):
         self.no_receptor = no_receptor
         super().__init__(*args, **kwargs)
 
@@ -503,12 +512,12 @@ def get_data_loader(
         return DataLoader(
             ds, batch_size, False, sampler=sampler,
             collate_fn=collate, drop_last=False, pin_memory=True,
-            num_workers=min(4, psutil.cpu_count()))
+            num_workers=NUM_WORKERS)
     else:
         return GeoDataLoader(
             ds, batch_size, False, sampler=sampler,
             drop_last=False, pin_memory=True,
-            num_workers=min(4, psutil.cpu_count()))
+            num_workers=NUM_WORKERS)
 
 
 def regression_types_to_lists(data_root, types_fname):
@@ -529,8 +538,9 @@ def regression_types_to_lists(data_root, types_fname):
     pki, pkd, ic50, receptors, ligands = [], [], [], [], []
     missing = []
     for i in range(len(df)):
-        if Path(data_root, lists[-2][i]).is_file() and Path(
-                data_root, lists[-1][i]).is_file():
+        rec_path = Path(data_root, lists[-2][i])
+        lig_path = Path(data_root, lists[-1][i])
+        if rec_path.is_file() and lig_path.is_file():
             pki.append(lists[0][i])
             pkd.append(lists[1][i])
             ic50.append(lists[2][i])
@@ -539,11 +549,11 @@ def regression_types_to_lists(data_root, types_fname):
         else:
             missing.append((lists[-2][i], lists[-1][i]))
     if len(missing):
-        print('Missing sturctures:')
+        LOG.warning('Missing sturctures:')
         for lost in missing:
             for item in lost:
                 if not Path(data_root, item).is_file():
-                    print(Path(data_root, item))
+                    LOG.warning(f'{Path(data_root, item)}')
     return pki, pkd, ic50, receptors, ligands
 
 
