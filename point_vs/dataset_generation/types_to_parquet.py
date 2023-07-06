@@ -11,27 +11,33 @@ from openbabel import openbabel
 from plip.basic.supplemental import extract_pdbid
 
 from point_vs import logging
-from point_vs.utils import mkdir, no_return_parallelise, coords_to_string, \
-    PositionSet, expand_path
+from point_vs.utils import (
+    mkdir,
+    no_return_parallelise,
+    coords_to_string,
+    PositionSet,
+    expand_path,
+)
 
 try:
     from openbabel import pybel
 except (ModuleNotFoundError, ImportError):
     import pybel
 
-LOG = logging.get_logger('PointVS')
+LOG = logging.get_logger("PointVS")
+
 
 def fetch_pdb(pdbid):
     """Modified plip function."""
     pdbid = pdbid.lower()
-    pdburl = f'https://files.rcsb.org/download/{pdbid}.pdb'
+    pdburl = f"https://files.rcsb.org/download/{pdbid}.pdb"
     try:
         pdbfile = urlopen(pdburl).read().decode()
-        if 'sorry' in pdbfile:
-            LOG.error(f'No file in PDB format available from wwPDB for {pdbid}')
+        if "sorry" in pdbfile:
+            LOG.error(f"No file in PDB format available from wwPDB for {pdbid}")
             return None, None
     except HTTPError:
-        LOG.error(f'No file in PDB format available from wwPDB for {pdibd}')
+        LOG.error(f"No file in PDB format available from wwPDB for {pdibd}")
         return None, None
     return [pdbfile, pdbid]
 
@@ -40,21 +46,21 @@ class Info:
     """Data structure to hold atom type data"""
 
     def __init__(
-            self,
-            sm,
-            smina_name,
-            adname,
-            anum,
-            ad_radius,
-            ad_depth,
-            ad_solvation,
-            ad_volume,
-            covalent_radius,
-            xs_radius,
-            xs_hydrophobe,
-            xs_donor,
-            xs_acceptor,
-            ad_heteroatom,
+        self,
+        sm,
+        smina_name,
+        adname,
+        anum,
+        ad_radius,
+        ad_depth,
+        ad_solvation,
+        ad_volume,
+        covalent_radius,
+        xs_radius,
+        xs_hydrophobe,
+        xs_donor,
+        xs_acceptor,
+        ad_heteroatom,
     ):
         self.sm = sm
         self.smina_name = smina_name
@@ -73,9 +79,8 @@ class Info:
 
 
 class StructuralFileParser:
-
-    def __init__(self, mol_type='ligand', extended=False):
-        assert mol_type in ('ligand', 'receptor')
+    def __init__(self, mol_type="ligand", extended=False):
+        assert mol_type in ("ligand", "receptor")
         self.extended = extended
         self.mol_type = mol_type
         self.non_ad_metal_names = [
@@ -548,27 +553,27 @@ class StructuralFileParser:
     def get_type_map(self):
         """Original author: Constantin Schneider"""
         types = [
-            ['AliphaticCarbonXSHydrophobe'],
-            ['AliphaticCarbonXSNonHydrophobe'],
-            ['AromaticCarbonXSHydrophobe'],
-            ['AromaticCarbonXSNonHydrophobe'],
-            ['Nitrogen', 'NitrogenXSAcceptor'],
-            ['NitrogenXSDonor', 'NitrogenXSDonorAcceptor'],
-            ['Oxygen', 'OxygenXSAcceptor'],
-            ['OxygenXSDonor', 'OxygenXSDonorAcceptor'],
-            ['Sulfur', 'SulfurAcceptor', 'Selenium'],
-            ['Phosphorus'],  # == 9
+            ["AliphaticCarbonXSHydrophobe"],
+            ["AliphaticCarbonXSNonHydrophobe"],
+            ["AromaticCarbonXSHydrophobe"],
+            ["AromaticCarbonXSNonHydrophobe"],
+            ["Nitrogen", "NitrogenXSAcceptor"],
+            ["NitrogenXSDonor", "NitrogenXSDonorAcceptor"],
+            ["Oxygen", "OxygenXSAcceptor"],
+            ["OxygenXSDonor", "OxygenXSDonorAcceptor"],
+            ["Sulfur", "SulfurAcceptor", "Selenium"],
+            ["Phosphorus"],  # == 9
         ]
         if self.extended:
             types += [
-                ['Fluorine'],
-                ['Chlorine'],
-                ['Bromine'],
-                ['Zinc'],
-                ['Magnesium', 'Calcium'],
-                ['Sodium', 'Potassium'],
-                ['Iron'],
-                ['GenericMetal']  # == 17
+                ["Fluorine"],
+                ["Chlorine"],
+                ["Bromine"],
+                ["Zinc"],
+                ["Magnesium", "Calcium"],
+                ["Sodium", "Potassium"],
+                ["Iron"],
+                ["GenericMetal"],  # == 17
             ]
         out_dict = defaultdict(lambda: len(types))
         for i, element_name in enumerate(self.atom_types):
@@ -605,56 +610,62 @@ class StructuralFileParser:
     @staticmethod
     def adjust_smina_type(t, h_bonded, hetero_bonded):
         """Original author: Constantin schneider"""
-        if t in ('AliphaticCarbonXSNonHydrophobe',
-                 'AliphaticCarbonXSHydrophobe'):  # C_C_C_P,
+        if t in (
+            "AliphaticCarbonXSNonHydrophobe",
+            "AliphaticCarbonXSHydrophobe",
+        ):  # C_C_C_P,
             if hetero_bonded:
-                return 'AliphaticCarbonXSNonHydrophobe'
+                return "AliphaticCarbonXSNonHydrophobe"
             else:
-                return 'AliphaticCarbonXSHydrophobe'
-        elif t in ('AromaticCarbonXSNonHydrophobe',
-                   'AromaticCarbonXSHydrophobe'):  # C_A_C_P,
+                return "AliphaticCarbonXSHydrophobe"
+        elif t in (
+            "AromaticCarbonXSNonHydrophobe",
+            "AromaticCarbonXSHydrophobe",
+        ):  # C_A_C_P,
             if hetero_bonded:
-                return 'AromaticCarbonXSNonHydrophobe'
+                return "AromaticCarbonXSNonHydrophobe"
             else:
-                return 'AromaticCarbonXSHydrophobe'
-        elif t in ('Nitrogen', 'NitogenXSDonor'):
+                return "AromaticCarbonXSHydrophobe"
+        elif t in ("Nitrogen", "NitogenXSDonor"):
             # N_N_N_P, no hydrogen bonding
             if h_bonded:
-                return 'NitrogenXSDonor'
+                return "NitrogenXSDonor"
             else:
-                return 'Nitrogen'
-        elif t in ('NitrogenXSAcceptor', 'NitrogenXSDonorAcceptor'):
+                return "Nitrogen"
+        elif t in ("NitrogenXSAcceptor", "NitrogenXSDonorAcceptor"):
             # N_NA_N_A, also considered an acceptor by autodock
             if h_bonded:
-                return 'NitrogenXSDonorAcceptor'
+                return "NitrogenXSDonorAcceptor"
             else:
-                return 'NitrogenXSAcceptor'
-        elif t in ('Oxygen' or t == 'OxygenXSDonor'):  # O_O_O_P,
+                return "NitrogenXSAcceptor"
+        elif t in ("Oxygen" or t == "OxygenXSDonor"):  # O_O_O_P,
             if h_bonded:
-                return 'OxygenXSDonor'
+                return "OxygenXSDonor"
             else:
-                return 'Oxygen'
-        elif t in ('OxygenXSAcceptor' or t == 'OxygenXSDonorAcceptor'):
+                return "Oxygen"
+        elif t in ("OxygenXSAcceptor" or t == "OxygenXSDonorAcceptor"):
             # O_OA_O_A, also an autodock acceptor
             if h_bonded:
-                return 'OxygenXSDonorAcceptor'
+                return "OxygenXSDonorAcceptor"
             else:
-                return 'OxygenXSAcceptor'
+                return "OxygenXSAcceptor"
         else:
             return t
 
     def obatom_to_smina_type(self, ob_atom):
         """Original author: Constantin schneider"""
         atomic_number = ob_atom.atomicnum
-        num_to_name = {1: 'HD', 6: 'A', 7: 'NA', 8: 'OA', 16: 'SA'}
+        num_to_name = {1: "HD", 6: "A", 7: "NA", 8: "OA", 16: "SA"}
 
         # Default fn returns True, otherwise inspect atom properties
         condition_fns = defaultdict(lambda: lambda: True)
-        condition_fns.update({
-            6: ob_atom.OBAtom.IsAromatic,
-            7: ob_atom.OBAtom.IsHbondAcceptor,
-            16: ob_atom.OBAtom.IsHbondAcceptor
-        })
+        condition_fns.update(
+            {
+                6: ob_atom.OBAtom.IsAromatic,
+                7: ob_atom.OBAtom.IsHbondAcceptor,
+                16: ob_atom.OBAtom.IsHbondAcceptor,
+            }
+        )
 
         # Get symbol
         ename = openbabel.GetSymbol(atomic_number)
@@ -711,22 +722,23 @@ class StructuralFileParser:
             return "NumTypes"
 
     def get_coords_and_types_info(
-            self, mol, all_ligand_coords=None, add_polar_hydrogens=True):
+        self, mol, all_ligand_coords=None, add_polar_hydrogens=True
+    ):
         xs, ys, zs, atomic_nums, types, bp = [], [], [], [], [], []
         resis = []
         n_features = len(set(self.type_map.values())) + 1
         for atom in mol:
-            if (self.mol_type == 'receptor' and
-                atom.OBAtom.GetResidue()) is None or \
-                    (atom.OBAtom.GetResidue() is not None and
-                     atom.OBAtom.GetResidue().GetName().lower() == 'hoh'):
+            if (self.mol_type == "receptor" and atom.OBAtom.GetResidue()) is None or (
+                atom.OBAtom.GetResidue() is not None
+                and atom.OBAtom.GetResidue().GetName().lower() == "hoh"
+            ):
                 continue
             atomic_num = atom.atomicnum
             if atomic_num == 1:
                 if atom.OBAtom.IsNonPolarHydrogen() or not add_polar_hydrogens:
                     continue
                 else:
-                    raise NotImplementedError('Hydrogens temporarily disabled.')
+                    raise NotImplementedError("Hydrogens temporarily disabled.")
             else:
                 smina_type = self.obatom_to_smina_type(atom)
                 if smina_type == "NumTypes":
@@ -758,17 +770,23 @@ class StructuralFileParser:
 
     def obmol_to_parquet(self, mol, add_polar_hydrogens):
         xs, ys, zs, types, atomic_nums, _, _ = self.get_coords_and_types_info(
-            mol, add_polar_hydrogens=add_polar_hydrogens)
+            mol, add_polar_hydrogens=add_polar_hydrogens
+        )
         df = pd.DataFrame()
-        df['x'], df['y'], df['z'] = xs, ys, zs
-        df['atomic_number'] = atomic_nums
-        df['types'] = types
-        df['bp'] = int(self.mol_type == 'receptor')
+        df["x"], df["y"], df["z"] = xs, ys, zs
+        df["atomic_number"] = atomic_nums
+        df["types"] = types
+        df["bp"] = int(self.mol_type == "receptor")
         return df
 
     def file_to_parquets(
-            self, input_file, output_path=None, output_fname=None,
-            add_polar_hydrogens=True, sdf_idx=None):
+        self,
+        input_file,
+        output_path=None,
+        output_fname=None,
+        add_polar_hydrogens=True,
+        sdf_idx=None,
+    ):
         mols = self.read_file(input_file)
         if output_path is not None:
             output_path = mkdir(output_path)
@@ -778,28 +796,30 @@ class StructuralFileParser:
             if sdf_idx is not None and idx != sdf_idx:
                 continue
             if output_fname is None:
-                fname = Path(
-                    mol.OBMol.GetTitle()).name.split('.')[0]
+                fname = Path(mol.OBMol.GetTitle()).name.split(".")[0]
             else:
                 fname = output_path / output_fname
             df = self.obmol_to_parquet(mol, add_polar_hydrogens)
             if output_path is None:
                 return df
-            if not str(fname).endswith('.parquet'):
-                LOG.error(f'{fname} does not have parquet extension')
-                raise RuntimeError('Output filename must end in .parquet')
+            if not str(fname).endswith(".parquet"):
+                LOG.error(f"{fname} does not have parquet extension")
+                raise RuntimeError("Output filename must end in .parquet")
             df.to_parquet(fname)
 
     def download_pdbs_from_csv(self, csv, output_dir):
         output_dir = Path(output_dir).expanduser()
         pdbids = set()
-        with open(csv, 'r') as f:
+        with open(csv, "r") as f:
             for line in f.readlines():
-                pdbids.add(line.split(',')[0].lower())
+                pdbids.add(line.split(",")[0].lower())
         cpus = mp.cpu_count()
-        inputs = [(pdbid, output_dir / pdbid) for pdbid in pdbids
-                  if not Path(output_dir, pdbid, 'receptor.pdb').is_file()]
-        with mp.get_context('spawn').Pool(processes=cpus) as pool:
+        inputs = [
+            (pdbid, output_dir / pdbid)
+            for pdbid in pdbids
+            if not Path(output_dir, pdbid, "receptor.pdb").is_file()
+        ]
+        with mp.get_context("spawn").Pool(processes=cpus) as pool:
             pool.starmap(self.download_pdb_file, inputs)
 
     @staticmethod
@@ -808,26 +828,25 @@ class StructuralFileParser:
         Checks for validity of ID and handles error while downloading.
         Returns the path of the downloaded file (From PLIP)"""
         output_dir = Path(output_dir).expanduser()
-        pdbpath = output_dir / 'receptor.pdb'
+        pdbpath = output_dir / "receptor.pdb"
         if pdbpath.is_file():
-            LOG.warning(pdbpath, 'already exists.')
+            LOG.warning(pdbpath, "already exists.")
             return
-        if len(pdbid) != 4 or extract_pdbid(
-                pdbid.lower()) == 'UnknownProtein':
-            raise RuntimeError('Unknown protein ' + pdbid)
+        if len(pdbid) != 4 or extract_pdbid(pdbid.lower()) == "UnknownProtein":
+            raise RuntimeError("Unknown protein " + pdbid)
         while True:
             try:
                 pdbfile, pdbid = fetch_pdb(pdbid.lower())
             except urllib.error.URLError:
-                LOG.warning(f'Fetching pdb {pdbid} failed, retrying...')
+                LOG.warning(f"Fetching pdb {pdbid} failed, retrying...")
             else:
                 break
         if pdbfile is None:
-            return 'none'
+            return "none"
         output_dir.mkdir(parents=True, exist_ok=True)
-        with open(pdbpath, 'w') as g:
+        with open(pdbpath, "w") as g:
             g.write(pdbfile)
-        LOG.info(f'File downloaded as {pdbpath}.')
+        LOG.info(f"File downloaded as {pdbpath}.")
         return pdbpath
 
 
@@ -836,7 +855,7 @@ def parse_types_file(types_file):
         recpath, ligpath = None, None
         chunks = line.split()
         for chunk in chunks:
-            if chunk.find('.parquet') != -1 or chunk.find('.gninatypes') != -1:
+            if chunk.find(".parquet") != -1 or chunk.find(".gninatypes") != -1:
                 if recpath is None:
                     recpath = chunk
                 else:
@@ -846,7 +865,7 @@ def parse_types_file(types_file):
         return recpath, ligpath
 
     recs, ligs = set(), set()
-    with open(types_file, 'r') as f:
+    with open(types_file, "r") as f:
         for line in f.readlines():
             rec, lig = find_paths(line)
             if rec is not None and lig is not None:
@@ -855,74 +874,99 @@ def parse_types_file(types_file):
     return list(recs), list(ligs)
 
 
-def parse_single_types_entry(inp, outp, structure_type, extended=False,
-                             mol2=False):
-
+def parse_single_types_entry(inp, outp, structure_type, extended=False, mol2=False):
     def get_sdf_and_index(lig):
-        sdf = '_'.join(str(lig).split('_')[:-1]) + extension
-        try:
-            idx = int(str(lig).split('_')[-1].split('.')[0])
-        except ValueError:
-            return sdf, 0
-        return sdf, idx
+        sdf = str(lig).split(".")[0] + extension
+        # try:
+        #     idx = int(str(lig).split("_")[-1].split(".")[0])
+        # except ValueError:
+        return sdf, 0
+        # return sdf, idx
 
     def get_pdb(rec):
-        if Path(rec).with_suffix('').name[-2:] == '_0':
+        if Path(rec).with_suffix("").name[-2:] == "_0":
             try:
-                rec = Path(Path(rec).parent,
-                           Path(rec).with_suffix('').name[:-2] + rec.suffix)
+                rec = Path(
+                    Path(rec).parent, Path(rec).with_suffix("").name[:-2] + rec.suffix
+                )
             except ValueError:
                 raise
-        return str(rec).replace(
-            '.parquet', '.pdb').replace(
-            '.gninatypes', '.pdb')
+        return str(rec).replace(".parquet", ".pdb").replace(".gninatypes", ".pdb")
 
-    extension = '.mol2' if mol2 else '.sdf'
+    extension = ".mol2" if mol2 else ".sdf"
     parser = StructuralFileParser(structure_type, extended)
-    if structure_type == 'receptor':
+    if structure_type == "receptor":
         inp = get_pdb(inp)
         sdf_idx = None
     else:
         inp, sdf_idx = get_sdf_and_index(inp)
-    parser.file_to_parquets(inp, outp.parent,
-                            outp.name.replace('.gninatypes', '.parquet'),
-                            add_polar_hydrogens=False, sdf_idx=sdf_idx)
+    parser.file_to_parquets(
+        inp,
+        outp.parent,
+        outp.name.replace(".gninatypes", ".parquet"),
+        add_polar_hydrogens=False,
+        sdf_idx=sdf_idx,
+    )
 
 
-def parse_types_mp(types_file, input_base_path, output_base_path, extended,
-                   mol2=False):
+def parse_types_mp(types_file, input_base_path, output_base_path, extended, mol2=False):
     output_dir = mkdir(output_base_path)
     input_base_path = expand_path(input_base_path)
     recs, ligs = parse_types_file(types_file)
     inputs = recs + ligs
-    structure_types = ['receptor' for _ in recs] + ['ligand' for _ in ligs]
+    structure_types = ["receptor" for _ in recs] + ["ligand" for _ in ligs]
     outputs = [Path(output_dir, input) for input in inputs]
     inputs = [Path(input_base_path, input) for input in inputs]
     mol2s = [mol2 for _ in inputs]
     no_return_parallelise(
-        parse_single_types_entry, inputs, outputs, structure_types, extended,
-        mol2s, cpus=1)
+        parse_single_types_entry,
+        inputs,
+        outputs,
+        structure_types,
+        extended,
+        mol2s,
+        cpus=1,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('types_file', type=str,
-                        help='Input file, any of sdf, pdb or mol2 format '
-                             'accepted')
-    parser.add_argument('output_path', type=str,
-                        help='Directory in which to store resultant parquet '
-                             'files')
-    parser.add_argument('input_base_path', type=str,
-                        help='Root relative to which types file entries are '
-                             'made. This should contain all of the SDF files '
-                             'to be converted (the same as the argument '
-                             '--base_path in generate_types_file.py).')
-    parser.add_argument('--extended_atom_types', '-e', action='store_true',
-                        help='18 atom types rather than 10')
-    parser.add_argument('--use_mol2', '-m', action='store_true',
-                        help='Look for mol2 files rather than sdf')
+    parser.add_argument(
+        "types_file",
+        type=str,
+        help="Input file, any of sdf, pdb or mol2 format " "accepted",
+    )
+    parser.add_argument(
+        "output_path",
+        type=str,
+        help="Directory in which to store resultant parquet " "files",
+    )
+    parser.add_argument(
+        "input_base_path",
+        type=str,
+        help="Root relative to which types file entries are "
+        "made. This should contain all of the SDF files "
+        "to be converted (the same as the argument "
+        "--base_path in generate_types_file.py).",
+    )
+    parser.add_argument(
+        "--extended_atom_types",
+        "-e",
+        action="store_true",
+        help="18 atom types rather than 10",
+    )
+    parser.add_argument(
+        "--use_mol2",
+        "-m",
+        action="store_true",
+        help="Look for mol2 files rather than sdf",
+    )
     args = parser.parse_args()
 
-    parse_types_mp(args.types_file, Path(args.input_base_path).expanduser(),
-                   args.output_path, args.extended_atom_types,
-                   mol2=args.use_mol2)
+    parse_types_mp(
+        args.types_file,
+        Path(args.input_base_path).expanduser(),
+        args.output_path,
+        args.extended_atom_types,
+        mol2=args.use_mol2,
+    )
