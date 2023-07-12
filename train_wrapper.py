@@ -52,7 +52,7 @@ def csv_file_to_types_file(csv_file, data_dir):
         line = f"{pks[i]} -1 -1 {protein_files[i].split('.')[0] + '.parquet'} {ligand_files[i].split('.')[0] + '.parquet'}\n"
         str += line
     if not os.path.exists(f"data/features/{csv_file.split('/')[-1].split('.')[0]}"):
-        os.makedirs(f"datafeatures/{csv_file.split('/')[-1].split('.')[0]}")
+        os.makedirs(f"data/features/{csv_file.split('/')[-1].split('.')[0]}")
     with open(
         f"data/features/{csv_file.split('/')[-1].split('.')[0]}/data.types", "w"
     ) as f:
@@ -72,7 +72,7 @@ def convert_files_to_parquet(csv_file, data_dir):
 
 def train_model(args):
     utils.set_gpu_mode(True)
-    save_path = Path(f"temp_models/{args.model_name}").expanduser()
+    save_path = Path(f"data/models/{args.model_name}").expanduser()
     save_path.mkdir(parents=True, exist_ok=True)
     with open(save_path / "cmd_args.yaml", "w", encoding="utf-8") as f:
         yaml.dump(vars(args), f)
