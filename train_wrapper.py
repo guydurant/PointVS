@@ -794,6 +794,8 @@ if __name__ == "__main__":
             convert_files_to_parquet(args.val_csv_file, args.val_data_dir)
         pred, true, keys = predict(args)
         df = pd.DataFrame({"key": keys, "pred": pred, "pk": true})
+        if not os.path.exists("data/results"):
+            os.makedirs("data/results")
         df.to_csv(
             f'data/results/{args.model_name}_{args.val_csv_file.split("/")[-1]}',
             index=False,
